@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>film</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1280" height="720"></canvas>
+<script src="film-data.js"></script>
+<script src="../../js/bottle.js"></script>
+<script src="../../js/lenses.js"></script>
+<script>
+// Deterministic renderer: window.renderFrame(t) draws the frame for time t (seconds). Choose the film with ?v=0..3
+const V = +(new URLSearchParams(location.search).get("v") || 0), F = FILMS[V], T = TIMING[F.slug];
+const cv = document.getElementById("c"), c = cv.getContext("2d"), W = 1280, H = 720;
+const INK = "#16242b", INK2 = "#42545c", TEAL = "#0f5c5a", AMBER = "#c9791a", BG = "#fbfaf6", SERIF = "Georgia,serif", SANS = "-apple-system,'Segoe UI',Helvetica,Arial,sans-serif";
+const ease = x => x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3);
+function wrap(text, x, y, maxW, lh, align) { const words = text.split(" "); let line = "", lines = []; for (const w of words) { const t = line ? line + " " + w : w; if (c.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; } lines.push(line); c.textAlign = align || "left"; lines.forEach((l, i) => c.fillText(l, x, y + i * lh)); return lines.length; }
+function rr(x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+function frameBase() {
+  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#f3efe3"); g.addColorStop(1, BG); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.fillStyle = TEAL; c.fillRect(0, 0, W, 6);
+  c.fillStyle = AMBER; c.font = "700 17px " + SANS; c.textAlign = "left"; c.fillText(F.eyebrow.toUpperCase(), 64, 58);
+  c.fillStyle = INK2; c.font = "600 16px " + SANS; c.textAlign = "right"; c.fillText("Rajan Kumar V K · Teaching Portfolio", W - 64, 58);
+}
+function caption(t) {
+  const cap = T.captions.find(k => t >= k.s && t < k.e); if (!cap) return;
+  c.font = "600 25px " + SANS; const words = cap.text.split(" "); let lines = [], line = "";
+  for (const w of words) { const tt = line ? line + " " + w : w; if (c.measureText(tt).width > 1040 && line) { lines.push(line); line = w; } else line = tt; } lines.push(line);
+  const bh = lines.length * 34 + 22, by = H - 34 - bh; c.fillStyle = "rgba(22,36,43,.88)"; rr(100, by, W - 200, bh, 14); c.fill();
+  c.fillStyle = "#fff"; c.textAlign = "center"; lines.forEach((l, i) => c.fillText(l, W / 2, by + 36 + i * 34));
+}
+const VIS = {
+  title(v, p) { const a = ease(p * 5); c.globalAlpha = a; c.fillStyle = INK; c.font = "700 84px " + SERIF; c.textAlign = "left"; c.fillText(v.title, 64, 270 + (1 - a) * 20); c.fillStyle = TEAL; c.fillText(v.title2, 64, 370 + (1 - a) * 20); c.globalAlpha = ease(p * 5 - 0.6); c.fillStyle = INK2; c.font = "500 28px " + SANS; c.fillText(v.sub, 64, 440); c.globalAlpha = 1; c.fillStyle = AMBER; c.fillRect(64, 470, 120 * ease(p * 3), 5); },
+  points(v, p) {
+    c.fillStyle = INK; c.font = "700 54px " + SERIF; c.textAlign = "left"; c.fillText(v.head, 64, 160);
+    const n = v.all.length, shown = v.items.length;
+    v.all.forEach((it, i) => {
+      if (i >= shown) return; const isNew = v.stagger ? true : i === shown - 1; const a = v.stagger ? ease((p * 1.25 - i / n) * n) : (isNew ? ease(p * 6) : 1);
+      const y = 210 + i * 86; c.globalAlpha = a; const hot = !v.stagger && isNew;
+      c.fillStyle = hot ? TEAL : "#fff"; rr(64, y, 1000, 68, 16); c.fill(); c.strokeStyle = hot ? TEAL : "#dfe5e3"; c.lineWidth = 2; c.stroke();
+      c.fillStyle = hot ? "#f6c27a" : AMBER; c.font = "700 30px " + SERIF; c.fillText(String(i + 1), 88, y + 45);
+      c.fillStyle = hot ? "#fff" : INK; c.font = "600 28px " + SANS; c.fillText(it, 130, y + 44); c.globalAlpha = 1;
+    });
+  },
+  quote(v, p) { const a = ease(p * 4); c.globalAlpha = a; c.fillStyle = AMBER; c.font = "700 140px " + SERIF; c.textAlign = "left"; c.fillText("“", 120, 300); c.fillStyle = INK; c.font = "700 66px " + SERIF; wrap(v.text, 200, 300 + (1 - a) * 16, 940, 84); c.globalAlpha = 1; },
+  bottle(v, p, t) {
+    const s = { y: 0, falling: false, landed: false, g: 9.81, gEff: 9.81, t };
+    if (v.mode === "drop") { const q = Math.max(0, p - 0.3) / 0.6; if (q > 0 && q < 1) { s.falling = true; s.gEff = 0; s.y = 266 * q * q; } else if (q >= 1) { s.landed = true; s.y = 266; } }
+    if (v.mode === "float") { s.falling = true; s.gEff = 0; s.y = 110 + Math.sin(t * 1.3) * 8; }
+    c.save(); c.translate(64, 96); rr(0, 0, 460, 520, 18); c.clip(); window.drawBottleScene(c, 460, 520, s); c.restore();
+    c.fillStyle = TEAL; c.font = "700 22px " + SANS; c.textAlign = "left"; c.fillText(v.note.toUpperCase(), 580, 150);
+    c.fillStyle = INK; c.font = "700 46px " + SERIF;
+    if (v.mode === "drop") wrap(s.falling ? "The streams vanish." : (s.landed ? "Caught: they return." : "Release…"), 580, 230, 620, 58);
+    else if (!v.ask) wrap("“If Einstein is right, the water will stop.”", 580, 230, 620, 58);
+    (v.ask || []).forEach((q, i) => { const a = ease((p * 1.4 - i * 0.22) * 4); c.globalAlpha = a; c.fillStyle = "#fff"; rr(580, 190 + i * 84, 600, 66, 16); c.fill(); c.strokeStyle = "#dfe5e3"; c.lineWidth = 2; c.stroke(); c.fillStyle = INK; c.font = "600 27px " + SANS; c.fillText(q, 606, 232 + i * 84); c.globalAlpha = 1; });
+  },
+  lenses(v, p) {
+    const M = window.LensModel, whoList = ["owner", "user", "city", "contractor"], whoName = { owner: "Owner", user: "Building user", city: "City and society", contractor: "Contractor" };
+    const who = v.stage === "who" ? whoList[Math.min(3, Math.floor(p * 4))] : "balanced";
+    const rows = M.evaluate(20, 0.12, 0.10), best = M.rank(rows, who);
+    c.fillStyle = INK; c.font = "700 40px " + SERIF; c.textAlign = "left";
+    c.fillText(v.stage === "options" ? "A 1974 concrete building. What now?" : v.stage === "bars" ? "Four lenses on every option" : "Whose decision is it?  " , 64, 130);
+    if (v.stage === "who") { c.fillStyle = TEAL; c.fillText(whoName[who], 500, 130); }
+    const cols = ["#5b6f8a", AMBER, "#3d9a5f", "#b0527a"], names = ["Technical", "Business", "Environment", "Society"];
+    rows.forEach((r, i) => {
+      const a = v.stage === "options" ? ease((p * 1.3 - i * 0.2) * 4) : 1, x = 64 + i * 292, y = 170, w = 272, h = 330, isBest = v.stage === "who" && r === best;
+      c.globalAlpha = a; c.fillStyle = isBest ? "#e3f1ef" : "#fff"; rr(x, y, w, h, 18); c.fill(); c.strokeStyle = isBest ? TEAL : "#dfe5e3"; c.lineWidth = isBest ? 4 : 2; c.stroke();
+      c.fillStyle = AMBER; c.font = "700 44px " + SERIF; c.fillText(r.o.k, x + 22, y + 58);
+      c.fillStyle = INK; c.font = "700 23px " + SERIF; wrap(r.o.n, x + 22, y + 98, w - 40, 28);
+      if (v.stage !== "options") {
+        const vals = [r.tech, r.bus, r.env, r.soc];
+        vals.forEach((val, j) => { const by = y + 160 + j * 40, grow = v.stage === "bars" ? ease((p * 1.4 - j * 0.2) * 3) : 1; c.fillStyle = INK2; c.font = "600 15px " + SANS; c.fillText(names[j], x + 22, by); c.fillStyle = "#e7ebe9"; rr(x + 22, by + 7, w - 44, 10, 5); c.fill(); c.fillStyle = cols[j]; rr(x + 22, by + 7, Math.max(10, (w - 44) * val / 100 * grow), 10, 5); c.fill(); });
+      }
+      if (isBest) { c.fillStyle = TEAL; c.font = "700 16px " + SANS; c.textAlign = "right"; c.fillText("PREFERRED", x + w - 20, y + 36); c.textAlign = "left"; }
+      c.globalAlpha = 1;
+    });
+    c.fillStyle = INK2; c.font = "500 15px " + SANS; c.fillText("Illustrative teaching values, not design data.", 64, 530);
+  }
+};
+window.renderFrame = function (t) {
+  frameBase();
+  let i = 0; for (let k = 0; k < T.starts.length; k++) if (t >= T.starts[k] - 0.25) i = k;
+  const p = (t - T.starts[i]) / T.durs[i], seg = F.segs[i];
+  const fade = Math.min(1, Math.max(0, (t - (T.starts[i] - 0.25)) / 0.3));
+  c.save(); c.globalAlpha = 1; VIS[seg.vis.type](seg.vis, Math.max(0, Math.min(1, p)), t); c.restore();
+  if (fade < 1) { c.fillStyle = "rgba(251,250,246," + (1 - fade) + ")"; c.fillRect(0, 70, W, H - 70); }
+  caption(t);
+};
+window.filmTotal = T.total; window.filmSlug = F.slug; renderFrame(0); window.filmReady = true;
+</script></body></html>
